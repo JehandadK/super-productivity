@@ -98,6 +98,27 @@ const toKind = (acc: Accumulator): SyncImportConflictChangeKind => {
   return acc.hasUpdate ? 'UPDATED' : 'OTHER';
 };
 
+export interface SyncImportConflictChangeSummary {
+  changes: SyncImportConflictChange[];
+  /** Pending ops the app wrote itself (see AUTOMATIC_UPDATE_FIELDS), not listed in `changes`. */
+  automaticOpCount: number;
+}
+
+/**
+ * Updates the app writes on its own while the user does nothing: creating the
+ * day's instance of a repeating task stamps these fields on the repeat config.
+ * Listing them as "edited" would bury the user's real changes, so they are
+ * counted separately instead.
+ */
+const AUTOMATIC_UPDATE_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  TASK_REPEAT_CFG: new Set(['lastTaskCreation', 'lastTaskCreationDay']),
+};
+
+const isAutomaticUpdate = (entityType: string, fields: string[]): boolean => {
+  const automatic = AUTOMATIC_UPDATE_FIELDS[entityType];
+  return !!automatic && fields.length > 0 && fields.every((f) => automatic.has(f));
+};
+
 /**
  * Collapses pending local ops into one row per touched entity, in the order
  * each entity was first touched. Returns `undefined` when there are more ops
@@ -107,16 +128,25 @@ const toKind = (acc: Accumulator): SyncImportConflictChangeKind => {
  */
 export const summarizePendingOps = (
   entries: OperationLogEntry[],
-): SyncImportConflictChange[] | undefined => {
+): SyncImportConflictChangeSummary | undefined => {
   if (entries.length === 0 || entries.length > MAX_LISTED_LOCAL_CHANGES) {
     return undefined;
   }
 
   const byEntity = new Map<string, Accumulator>();
+  let automaticOpCount = 0;
 
   for (const { op } of entries) {
     const ids = op.entityIds?.length ? op.entityIds : [op.entityId];
     const actionPayload = isRecord(op.payload) ? extractActionPayload(op.payload) : {};
+    if (
+      op.opType === OpType.Update &&
+      ids.length === 1 &&
+      isAutomaticUpdate(op.entityType, readChangedFields(actionPayload))
+    ) {
+      automaticOpCount++;
+      continue;
+    }
     // A multi-id op shares one payload, so a label read from it would be
     // attributed to every id — only trust it for single-entity ops.
     const label = ids.length === 1 ? readLabel(actionPayload) : undefined;
@@ -146,7 +176,7 @@ export const summarizePendingOps = (
     }
   }
 
-  return [...byEntity.values()].map((acc) => {
+  const changes = [...byEntity.values()].map((acc) => {
     const kind = toKind(acc);
     const fields = [...acc.fields].slice(0, MAX_LISTED_FIELDS);
     return {
@@ -157,4 +187,5 @@ export const summarizePendingOps = (
       ...(kind === 'UPDATED' && fields.length ? { fields } : {}),
     };
   });
+  return { changes, automaticOpCount };
 };

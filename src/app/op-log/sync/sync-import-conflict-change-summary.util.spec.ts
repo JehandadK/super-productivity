@@ -6,11 +6,16 @@ import {
 } from '../core/operation.types';
 import {
   MAX_LISTED_LOCAL_CHANGES,
+  SyncImportConflictChange,
   summarizePendingOps,
 } from './sync-import-conflict-change-summary.util';
 
 describe('summarizePendingOps', () => {
   let seq = 0;
+
+  const listChanges = (
+    entries: OperationLogEntry[],
+  ): SyncImportConflictChange[] | undefined => summarizePendingOps(entries)?.changes;
 
   const entry = (overrides: Partial<Operation>): OperationLogEntry => ({
     seq: ++seq,
@@ -36,7 +41,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should return undefined when there is nothing to list', () => {
-    expect(summarizePendingOps([])).toBeUndefined();
+    expect(listChanges([])).toBeUndefined();
   });
 
   it('should return undefined above the listing limit', () => {
@@ -44,7 +49,7 @@ describe('summarizePendingOps', () => {
       entry({ entityId: `task-${i}` }),
     );
 
-    expect(summarizePendingOps(entries)).toBeUndefined();
+    expect(listChanges(entries)).toBeUndefined();
   });
 
   it('should list exactly at the limit', () => {
@@ -52,11 +57,11 @@ describe('summarizePendingOps', () => {
       entry({ entityId: `task-${i}` }),
     );
 
-    expect(summarizePendingOps(entries)?.length).toBe(MAX_LISTED_LOCAL_CHANGES);
+    expect(listChanges(entries)?.length).toBe(MAX_LISTED_LOCAL_CHANGES);
   });
 
   it('should read the title of a created task', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({
         actionType: ActionType.TASK_SHARED_ADD,
         opType: OpType.Create,
@@ -73,7 +78,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should merge several edits of one task into one row with the newest title and the touched fields', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({
         payload: {
           entityChanges: [],
@@ -102,7 +107,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should not report bookkeeping fields as edits', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({
         payload: {
           entityChanges: [],
@@ -115,7 +120,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should report a delete over a create or update of the same entity', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({ opType: OpType.Update }),
       entry({ opType: OpType.Delete }),
     ]);
@@ -124,7 +129,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should expand a bulk op into a row per entity without guessing labels', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({
         opType: OpType.Delete,
         entityId: undefined,
@@ -143,7 +148,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should report a pending full-state op as an import', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({
         actionType: ActionType.LOAD_ALL_DATA,
         opType: OpType.BackupImport,
@@ -155,8 +160,52 @@ describe('summarizePendingOps', () => {
     expect(result).toEqual([{ entityType: 'ALL', kind: 'IMPORTED' }]);
   });
 
+  it('should count repeat-config bookkeeping updates instead of listing them', () => {
+    const repeatCfgUpdate = (changes: Record<string, unknown>): OperationLogEntry =>
+      entry({
+        entityType: 'TASK_REPEAT_CFG',
+        entityId: 'cfg-1',
+        payload: {
+          entityChanges: [],
+          actionPayload: { taskRepeatCfg: { id: 'cfg-1', changes } },
+        },
+      });
+
+    const summary = summarizePendingOps([
+      repeatCfgUpdate({ lastTaskCreation: 1, lastTaskCreationDay: '2026-10-26' }),
+      repeatCfgUpdate({ lastTaskCreationDay: '2026-10-27' }),
+      entry({ entityId: 'task-1' }),
+    ]);
+
+    expect(summary?.automaticOpCount).toBe(2);
+    expect(summary?.changes.map((c) => c.entityType)).toEqual(['TASK']);
+  });
+
+  it('should still list a repeat-config edit that touches a user-facing field', () => {
+    const summary = summarizePendingOps([
+      entry({
+        entityType: 'TASK_REPEAT_CFG',
+        entityId: 'cfg-1',
+        payload: {
+          entityChanges: [],
+          actionPayload: {
+            taskRepeatCfg: {
+              id: 'cfg-1',
+              changes: { title: 'Gym', lastTaskCreation: 1 },
+            },
+          },
+        },
+      }),
+    ]);
+
+    expect(summary?.automaticOpCount).toBe(0);
+    expect(summary?.changes[0]).toEqual(
+      jasmine.objectContaining({ entityType: 'TASK_REPEAT_CFG', label: 'Gym' }),
+    );
+  });
+
   it('should keep different entity types with the same id apart', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({ entityType: 'TASK', entityId: 'x' }),
       entry({ entityType: 'NOTE', entityId: 'x' }),
     ]);
@@ -165,7 +214,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should read a name for entities that have no title', () => {
-    const result = summarizePendingOps([
+    const result = listChanges([
       entry({
         entityType: 'TAG',
         entityId: 'tag-1',
@@ -181,7 +230,7 @@ describe('summarizePendingOps', () => {
   });
 
   it('should tolerate payloads that are not objects', () => {
-    const result = summarizePendingOps([entry({ payload: null as unknown })]);
+    const result = listChanges([entry({ payload: null as unknown })]);
 
     expect(result).toEqual([{ entityType: 'TASK', entityId: 'task-1', kind: 'UPDATED' }]);
   });

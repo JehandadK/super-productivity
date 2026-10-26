@@ -38,6 +38,8 @@ export interface SyncImportConflictData {
    * remote there) and when there are too many to list usefully.
    */
   localChanges?: SyncImportConflictChange[];
+  /** Pending ops the app wrote itself (e.g. repeat-task bookkeeping), left out of `localChanges`. */
+  automaticChangeCount?: number;
 }
 
 export type SyncImportConflictResolution = 'USE_LOCAL' | 'USE_REMOTE' | 'CANCEL';

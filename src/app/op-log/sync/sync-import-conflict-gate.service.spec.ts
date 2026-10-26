@@ -155,6 +155,39 @@ describe('SyncImportConflictGateService', () => {
       expect(result.dialogData?.localChanges?.[0].label).toBe('Op title');
     });
 
+    it('should report automatic repeat-config updates as a count, not rows', async () => {
+      const repeatCfgBookkeeping = createEntry(
+        createOperation({
+          id: 'local-repeat-cfg',
+          actionType: ActionType.TASK_SHARED_UPDATE,
+          opType: OpType.Update,
+          entityType: 'TASK_REPEAT_CFG',
+          entityId: 'cfg-1',
+          payload: {
+            entityChanges: [],
+            actionPayload: {
+              taskRepeatCfg: {
+                id: 'cfg-1',
+                changes: { lastTaskCreationDay: '2026-10-26' },
+              },
+            },
+          },
+          clientId: 'client-A',
+          vectorClock: { clientA: 1 },
+        }),
+      );
+      opLogStoreSpy.getUnsynced.and.resolveTo([
+        repeatCfgBookkeeping,
+        pendingUpdate('task-1', { title: 'Real edit' }),
+      ]);
+
+      const result = await service.checkIncomingFullStateConflict([createOperation()]);
+
+      expect(result.dialogData?.filteredOpCount).toBe(2);
+      expect(result.dialogData?.localChanges?.map((c) => c.entityId)).toEqual(['task-1']);
+      expect(result.dialogData?.automaticChangeCount).toBe(1);
+    });
+
     it('should omit the list when there are too many changes to read', async () => {
       opLogStoreSpy.getUnsynced.and.resolveTo(
         Array.from({ length: 21 }, (_, i) =>

@@ -39,21 +39,31 @@
       <ul>
         @for (row of localChangeRows; track $index) {
           <li>
-            <span class="entity">{{
-              row.entityKey ? (row.entityKey | translate) : row.entityType
+            <span class="item-title">{{
+              row.label || (row.entityKey ? (row.entityKey | translate) : row.entityType)
             }}</span>
-            @if (row.label) {
-              <span class="item-label">{{ row.label }}</span>
-            }
-            <span class="kind"
-              >{{ row.kindKey | translate }}
+            <span class="item-meta">
+              @if (row.label) {
+                <span class="entity">{{
+                  row.entityKey ? (row.entityKey | translate) : row.entityType
+                }}</span>
+              }
+              <span class="kind">{{ row.kindKey | translate }}</span>
               @if (row.fieldsText) {
-                ({{ row.fieldsText }})
+                <span class="fields">({{ row.fieldsText }})</span>
               }
             </span>
           </li>
         }
       </ul>
+      @if (data.automaticChangeCount) {
+        <p class="automatic-note">
+          {{
+            T.F.SYNC.D_SYNC_IMPORT_CONFLICT.AUTOMATIC_CHANGES
+              | translate: { count: data.automaticChangeCount }
+          }}
+        </p>
+      }
     </section>
   }
 

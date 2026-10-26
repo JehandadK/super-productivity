@@ -25,27 +25,46 @@ h1 {
   }
 
   ul {
+    // Same ink-on-surface overlay as .import-info below.
+    background: var(--state-hover);
+    border-radius: 8px;
     list-style: none;
     margin: 0;
-    padding: 0;
-    // Up to 20 rows: keep the buttons on screen on small windows.
-    max-height: 220px;
-    overflow-y: auto;
+    padding: var(--s-half) var(--s2);
   }
 
   li {
-    padding: var(--s-half) 0;
-    line-height: 1.4;
+    display: flex;
+    flex-direction: column;
+    padding: var(--s) 0;
     overflow-wrap: anywhere;
+
+    & + li {
+      border-top: 1px solid var(--extra-border-color);
+    }
   }
 
-  .entity,
-  .kind {
+  .item-title {
+    font-weight: 500;
+  }
+
+  .item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--s-half);
+    font-size: 13px;
     color: var(--text-color-muted);
   }
 
-  .item-label {
-    font-weight: 500;
+  .entity::after {
+    content: '·';
+    margin-left: var(--s-half);
+  }
+
+  .automatic-note {
+    font-size: 13px;
+    color: var(--text-color-muted);
+    margin: var(--s-half) 0 0;
   }
 }
 

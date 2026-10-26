@@ -218,8 +218,6 @@ export class SyncImportConflictGateService {
       return { ...result, deferredRepairOpId: fullStateOp.id };
     }
 
-    const localChanges = await this._buildLocalChanges(pendingOps);
-
     return {
       ...result,
       dialogData: {
@@ -228,7 +226,7 @@ export class SyncImportConflictGateService {
         syncImportReason: fullStateOp.syncImportReason,
         scenario: 'INCOMING_IMPORT',
         isNeverSynced,
-        ...(localChanges ? { localChanges } : {}),
+        ...(await this._buildLocalChanges(pendingOps)),
       },
     };
   }
@@ -240,30 +238,39 @@ export class SyncImportConflictGateService {
    */
   private async _buildLocalChanges(
     pendingOps: OperationLogEntry[],
-  ): Promise<SyncImportConflictChange[] | undefined> {
-    const changes = summarizePendingOps(pendingOps);
-    if (!changes?.length) {
-      return undefined;
+  ): Promise<Pick<SyncImportConflictData, 'localChanges' | 'automaticChangeCount'>> {
+    const summary = summarizePendingOps(pendingOps);
+    if (!summary?.changes.length) {
+      return {};
     }
+    const { changes, automaticOpCount } = summary;
+    const withCount = (
+      localChanges: SyncImportConflictChange[],
+    ): Pick<SyncImportConflictData, 'localChanges' | 'automaticChangeCount'> => ({
+      localChanges,
+      ...(automaticOpCount ? { automaticChangeCount: automaticOpCount } : {}),
+    });
 
     if (!changes.some((c) => c.entityType === 'TASK' && c.entityId && !c.label)) {
-      return changes;
+      return withCount(changes);
     }
 
     try {
       const tasks = await firstValueFrom(this.store.select(selectTaskEntities));
-      return changes.map((change) => {
-        const title =
-          change.entityType === 'TASK' && change.entityId && !change.label
-            ? tasks[change.entityId]?.title
-            : undefined;
-        return title ? { ...change, label: title } : change;
-      });
+      return withCount(
+        changes.map((change) => {
+          const title =
+            change.entityType === 'TASK' && change.entityId && !change.label
+              ? tasks[change.entityId]?.title
+              : undefined;
+          return title ? { ...change, label: title } : change;
+        }),
+      );
     } catch (e) {
       // Titles are cosmetic; failing to read them must never keep the user from
       // resolving the conflict, so fall back to the unlabelled rows.
       OpLog.warn('SyncImportConflictGateService: could not resolve task titles', e);
-      return changes;
+      return withCount(changes);
     }
   }
 

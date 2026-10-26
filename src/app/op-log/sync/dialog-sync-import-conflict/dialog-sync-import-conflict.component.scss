@@ -15,6 +15,40 @@ h1 {
   line-height: 1.5;
 }
 
+.local-changes {
+  margin-bottom: var(--s2);
+
+  h2 {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: var(--s-half);
+  }
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    // Up to 20 rows: keep the buttons on screen on small windows.
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  li {
+    padding: var(--s-half) 0;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .entity,
+  .kind {
+    color: var(--text-color-muted);
+  }
+
+  .item-label {
+    font-weight: 500;
+  }
+}
+
 .import-info {
   // Ink-on-surface overlay, not a surface token: the base light theme collapses
   // --surface-2/-3/-4 to #fff, so --bg-lighter on a dialog card renders as

@@ -33,6 +33,30 @@
     </p>
   }
 
+  @if (localChangeRows.length) {
+    <section class="local-changes">
+      <h2>{{ T.F.SYNC.D_SYNC_IMPORT_CONFLICT.LOCAL_CHANGES_TITLE | translate }}</h2>
+      <ul>
+        @for (row of localChangeRows; track $index) {
+          <li>
+            <span class="entity">{{
+              row.entityKey ? (row.entityKey | translate) : row.entityType
+            }}</span>
+            @if (row.label) {
+              <span class="item-label">{{ row.label }}</span>
+            }
+            <span class="kind"
+              >{{ row.kindKey | translate }}
+              @if (row.fieldsText) {
+                ({{ row.fieldsText }})
+              }
+            </span>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+
   <div class="import-info">
     <div class="info-row">
       <span class="label"

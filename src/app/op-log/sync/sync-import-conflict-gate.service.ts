@@ -1,5 +1,12 @@
 import { inject, Injectable } from '@angular/core';
+import { Store } from '@ngrx/store';
+import { firstValueFrom } from 'rxjs';
 import { takeInterpretableOpPrefix } from './remote-op-block.util';
+import {
+  SyncImportConflictChange,
+  summarizePendingOps,
+} from './sync-import-conflict-change-summary.util';
+import { selectTaskEntities } from '../../features/tasks/store/task.selectors';
 import { OperationLogStoreService } from '../persistence/operation-log-store.service';
 import {
   ActionType,
@@ -62,6 +69,7 @@ const isCausalRepair = (op: Operation): boolean =>
 export class SyncImportConflictGateService {
   private opLogStore = inject(OperationLogStoreService);
   private writeFlushService = inject(OperationWriteFlushService);
+  private store = inject(Store);
 
   /**
    * Every pending op is user work unless it is an onboarding example-task create,
@@ -210,6 +218,8 @@ export class SyncImportConflictGateService {
       return { ...result, deferredRepairOpId: fullStateOp.id };
     }
 
+    const localChanges = await this._buildLocalChanges(pendingOps);
+
     return {
       ...result,
       dialogData: {
@@ -218,8 +228,43 @@ export class SyncImportConflictGateService {
         syncImportReason: fullStateOp.syncImportReason,
         scenario: 'INCOMING_IMPORT',
         isNeverSynced,
+        ...(localChanges ? { localChanges } : {}),
       },
     };
+  }
+
+  /**
+   * Lists what the user would lose. Update ops usually carry only the changed
+   * fields, so a task that was merely ticked off has no title in the op — fill
+   * those from the live task state instead of showing a bare id.
+   */
+  private async _buildLocalChanges(
+    pendingOps: OperationLogEntry[],
+  ): Promise<SyncImportConflictChange[] | undefined> {
+    const changes = summarizePendingOps(pendingOps);
+    if (!changes?.length) {
+      return undefined;
+    }
+
+    if (!changes.some((c) => c.entityType === 'TASK' && c.entityId && !c.label)) {
+      return changes;
+    }
+
+    try {
+      const tasks = await firstValueFrom(this.store.select(selectTaskEntities));
+      return changes.map((change) => {
+        const title =
+          change.entityType === 'TASK' && change.entityId && !change.label
+            ? tasks[change.entityId]?.title
+            : undefined;
+        return title ? { ...change, label: title } : change;
+      });
+    } catch (e) {
+      // Titles are cosmetic; failing to read them must never keep the user from
+      // resolving the conflict, so fall back to the unlabelled rows.
+      OpLog.warn('SyncImportConflictGateService: could not resolve task titles', e);
+      return changes;
+    }
   }
 
   private _mergePendingOps(
